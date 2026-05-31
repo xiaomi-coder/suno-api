@@ -355,7 +355,7 @@ class SunoApi {
 
     // Route interceptorni OLDIN ro'yxatdan o'tkazamiz
     const captchaPromise = new Promise<string | null>((resolveToken) => {
-      page.route('**/api/generate/**', async (route: any) => {
+      page.route('**/(api/generate|api/unified/*/create|api/*/generate)/**', async (route: any) => {
         try {
           logger.info('>>> Generate request intercepted!');
           route.abort();
@@ -370,18 +370,30 @@ class SunoApi {
       });
     });
 
-    // Textarea va button click
+    // Textarea va submit
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
+    await sleep(1);
 
-    // Create/Send button
-    const button = page.locator('button[aria-label="Create"]')
-      .or(page.locator('button[aria-label="Send"]'))
-      .or(page.locator('button[type="submit"]'))
-      .or(page.locator('button').filter({ hasText: /create|send/i }))
-      .first();
-    await this.click(button);
-    logger.info('>>> Create button clicked, waiting for generate request...');
+    // Yangi Suno UI — Enter bosish yoki button bosish
+    try {
+      await textarea.press('Enter');
+      logger.info('>>> Enter pressed on textarea');
+    } catch(e) {}
+
+    // Backup: Submit button ham bosamiz
+    try {
+      const button = page.locator('button[aria-label="Create"]')
+        .or(page.locator('button[aria-label="Send"]'))
+        .or(page.locator('button[data-testid*="send"]'))
+        .or(page.locator('button[data-testid*="submit"]'))
+        .first();
+      await button.click({ timeout: 3000 });
+      logger.info('>>> Submit button clicked');
+    } catch(e) {
+      logger.info('>>> No submit button found, Enter was used');
+    }
+    logger.info('>>> Waiting for generate request...');
 
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {
