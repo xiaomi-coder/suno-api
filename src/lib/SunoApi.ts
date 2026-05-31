@@ -314,8 +314,17 @@ class SunoApi {
     await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
-    // await page.locator('.react-aria-GridList').waitFor({ timeout: 60000 });
-    await page.waitForResponse('**/api/project/**\\?**', { timeout: 60000 }); // wait for song list API call
+    try {
+      await Promise.race([
+        page.waitForResponse('**/api/project/**', { timeout: 30000 }),
+        page.waitForResponse('**/api/feed/**', { timeout: 30000 }),
+        page.waitForResponse('**/api/user/**', { timeout: 30000 }),
+        new Promise(resolve => setTimeout(resolve, 30000)), // fallback
+      ]);
+    } catch(e) {
+      logger.info('Waiting for page load fallback...');
+      await page.waitForTimeout(5000);
+    }
 
     if (this.ghostCursorEnabled)
       this.cursor = await createCursor(page);
@@ -326,11 +335,15 @@ class SunoApi {
       // await this.click(page, { x: 318, y: 13 });
     } catch(e) {}
 
-    const textarea = page.getByPlaceholder('Chat to make music')
+    const textarea = page.locator('[placeholder="Chat to make music"]')
+      .or(page.locator('[data-placeholder="Chat to make music"]'))
+      .or(page.locator('[contenteditable="true"]').filter({ hasText: '' }))
+      .or(page.getByPlaceholder('Chat to make music'))
       .or(page.getByPlaceholder('Describe your song'))
       .or(page.getByPlaceholder('Describe the song you want to make'))
       .or(page.locator('.custom-textarea'))
       .first();
+    await textarea.waitFor({ timeout: 60000 });
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
