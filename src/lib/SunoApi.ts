@@ -364,6 +364,17 @@ class SunoApi {
         while (true) {
           if (wait)
             await waitForRequests(page, controller.signal);
+
+          // hCaptcha iframe borligini tekshirish
+          const challengeVisible = await challenge.isVisible().catch(() => false);
+          if (!challengeVisible) {
+            // hCaptcha yo'q (Turnstile yoki boshqa) — route interceptor kutadi
+            logger.info('No hCaptcha challenge detected, waiting for route interceptor...');
+            await sleep(30); // 30 soniya route interceptorga vaqt beramiz
+            resolve();
+            break;
+          }
+
           const drag = (await challenge.locator('.prompt-text').first().innerText()).toLowerCase().includes('drag');
           let captcha: any;
           for (let j = 0; j < 3; j++) { // try several times because sometimes 2Captcha could return an error
@@ -434,7 +445,7 @@ class SunoApi {
       throw e;
     });
     return (new Promise((resolve, reject) => {
-      page.route('**/api/generate/v2/**', async (route: any) => {
+      page.route('**/api/generate/**', async (route: any) => {
         try {
           logger.info('hCaptcha token received. Closing browser');
           route.abort();
