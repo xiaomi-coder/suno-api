@@ -347,8 +347,13 @@ class SunoApi {
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
-    const button = page.locator('button[aria-label="Create"]').locator('div.flex');
-    this.click(button);
+    // Create/Send button — Suno UI yangilanganligi uchun bir nechta variant
+    const button = page.locator('button[aria-label="Create"]')
+      .or(page.locator('button[aria-label="Send"]'))
+      .or(page.locator('button[type="submit"]'))
+      .or(page.locator('button').filter({ hasText: /create|send/i }))
+      .first();
+    await this.click(button);
 
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {

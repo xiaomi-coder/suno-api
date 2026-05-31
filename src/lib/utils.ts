@@ -76,13 +76,14 @@ export const waitForRequests = (page: Page, signal: AbortSignal): Promise<void> 
     };
 
     // Wait for an hCaptcha request for up to 1 minute
+    // If no hCaptcha occurs (e.g. Cloudflare Turnstile is used instead), resolve gracefully
     const initialTimeout = setTimeout(() => {
+      cleanupListeners();
       if (!requestOccurred) {
-        page.off('request', onRequest);
-        cleanupListeners();
-        reject(new Error('No hCaptcha request occurred within 1 minute.'));
+        // No hCaptcha - Suno might use Turnstile or no CAPTCHA at all
+        // Resolve instead of reject so route interceptor can still catch the generate request
+        resolve();
       } else {
-        // Start waiting for no hCaptcha requests
         resetTimeout();
       }
     }, 60000); // 1 minute timeout
