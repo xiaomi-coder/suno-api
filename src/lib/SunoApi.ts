@@ -344,24 +344,44 @@ class SunoApi {
       .or(page.locator('.custom-textarea'))
       .first();
     await textarea.waitFor({ timeout: 60000 });
+
+    // Route interceptor va debug — textarea click OLDIDAN ro'yxatga olinadi
+    page.on('request', (req) => {
+      const url = req.url();
+      if (url.includes('generate') || url.includes('studio-api') || url.includes('suno.com/api')) {
+        logger.info('>>> Browser request: ' + req.method() + ' ' + url.substring(0, 150));
+      }
+    });
+
+    // Route interceptorni OLDIN ro'yxatdan o'tkazamiz
+    const captchaPromise = new Promise<string | null>((resolveToken) => {
+      page.route('**/api/generate/**', async (route: any) => {
+        try {
+          logger.info('>>> Generate request intercepted!');
+          route.abort();
+          const request = route.request();
+          this.currentToken = request.headers().authorization?.split('Bearer ').pop() || this.currentToken;
+          const token = request.postDataJSON()?.token || null;
+          logger.info('>>> Token extracted: ' + (token ? token.substring(0, 30) : 'null'));
+          resolveToken(token);
+        } catch(err) {
+          resolveToken(null);
+        }
+      });
+    });
+
+    // Textarea va button click
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
-    // Create/Send button — Suno UI yangilanganligi uchun bir nechta variant
+    // Create/Send button
     const button = page.locator('button[aria-label="Create"]')
       .or(page.locator('button[aria-label="Send"]'))
       .or(page.locator('button[type="submit"]'))
       .or(page.locator('button').filter({ hasText: /create|send/i }))
       .first();
     await this.click(button);
-
-    // Debug: barcha so'rovlarni log qilamiz
-    page.on('request', (req) => {
-      const url = req.url();
-      if (url.includes('suno') || url.includes('generate') || url.includes('api')) {
-        logger.info('Browser request: ' + req.method() + ' ' + url.substring(0, 120));
-      }
-    });
+    logger.info('>>> Create button clicked, waiting for generate request...');
 
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {
@@ -452,21 +472,13 @@ class SunoApi {
       browser.browser()?.close();
       throw e;
     });
-    return (new Promise((resolve, reject) => {
-      page.route('**/api/generate/**', async (route: any) => {
-        try {
-          logger.info('hCaptcha token received. Closing browser');
-          route.abort();
-          browser.browser()?.close();
-          controller.abort();
-          const request = route.request();
-          this.currentToken = request.headers().authorization.split('Bearer ').pop();
-          resolve(request.postDataJSON().token);
-        } catch(err) {
-          reject(err);
-        }
-      });
-    }));
+
+    // captchaPromise natijasini qaytaramiz
+    const token = await captchaPromise;
+    controller.abort();
+    browser.browser()?.close();
+    logger.info('>>> getCaptcha completed, token: ' + (token ? 'received' : 'null'));
+    return token;
   }
 
   /**
