@@ -355,7 +355,12 @@ class SunoApi {
 
     // Route interceptorni OLDIN ro'yxatdan o'tkazamiz
     const captchaPromise = new Promise<string | null>((resolveToken) => {
-      page.route('**/(api/generate|api/unified/*/create|api/*/generate)/**', async (route: any) => {
+      page.route('**/api/**', async (route: any) => {
+        const url = route.request().url();
+        if (!url.includes('/generate') && !url.includes('/create')) {
+          await route.continue();
+          return;
+        }
         try {
           logger.info('>>> Generate request intercepted!');
           route.abort();
