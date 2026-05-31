@@ -355,6 +355,14 @@ class SunoApi {
       .first();
     await this.click(button);
 
+    // Debug: barcha so'rovlarni log qilamiz
+    page.on('request', (req) => {
+      const url = req.url();
+      if (url.includes('suno') || url.includes('generate') || url.includes('api')) {
+        logger.info('Browser request: ' + req.method() + ' ' + url.substring(0, 120));
+      }
+    });
+
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {
       const frame = page.frameLocator('iframe[title*="hCaptcha"]');
