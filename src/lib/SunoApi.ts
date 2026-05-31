@@ -326,7 +326,11 @@ class SunoApi {
       // await this.click(page, { x: 318, y: 13 });
     } catch(e) {}
 
-    const textarea = page.locator('.custom-textarea');
+    const textarea = page.getByPlaceholder('Chat to make music')
+      .or(page.getByPlaceholder('Describe your song'))
+      .or(page.getByPlaceholder('Describe the song you want to make'))
+      .or(page.locator('.custom-textarea'))
+      .first();
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
