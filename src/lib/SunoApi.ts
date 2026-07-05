@@ -335,7 +335,11 @@ class SunoApi {
       // await this.click(page, { x: 318, y: 13 });
     } catch(e) {}
 
-    const textarea = page.locator('[placeholder="Chat to make music"]')
+    // Suno v5.5 UI: Song Description = textarea[maxlength="3000"] (Advanced),
+    // "Describe the sound you want" = textarea[maxlength="500"] (Simple mode)
+    const textarea = page.locator('textarea[maxlength="3000"]')
+      .or(page.locator('textarea[maxlength="500"]'))
+      .or(page.locator('[placeholder="Chat to make music"]'))
       .or(page.locator('[data-placeholder="Chat to make music"]'))
       .or(page.locator('[contenteditable="true"]').filter({ hasText: '' }))
       .or(page.getByPlaceholder('Chat to make music'))
@@ -388,7 +392,8 @@ class SunoApi {
 
     // Backup: Submit button ham bosamiz
     try {
-      const button = page.locator('button[aria-label="Create"]')
+      const button = page.locator('button[aria-label="Create song"]')
+        .or(page.locator('button[aria-label="Create"]'))
         .or(page.locator('button[aria-label="Send"]'))
         .or(page.locator('button[data-testid*="send"]'))
         .or(page.locator('button[data-testid*="submit"]'))
