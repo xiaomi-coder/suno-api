@@ -425,11 +425,16 @@ class SunoApi {
 
     // Textarea va submit — .fill() bilan to'ldiramiz (bu Create tugmasini YOQADI).
     // pressSequentially/Enter ishlamaydi: dropdown ochadi va Create o'chiq qoladi.
+    // MUHIM: aynan DESCRIPTION (maxlength 3000/500) ga yozamiz — bu Create tugmasini yoqadi.
+    // Styles (1000) yoki lyrics ga yozish tugmani YOQMAYDI.
+    const descBox = page.locator('textarea[maxlength="3000"]')
+      .or(page.locator('textarea[maxlength="500"]'))
+      .first();
     try {
-      await textarea.fill('happy upbeat song about friendship and summer');
-      logger.info('>>> Textarea filled via .fill()');
+      await descBox.fill('happy upbeat song about friendship and summer');
+      logger.info('>>> Description filled via .fill()');
     } catch(e) {
-      try { await this.click(textarea); await textarea.pressSequentially('Lorem ipsum', { delay: 60 }); } catch(e2) {}
+      try { await this.click(textarea); await textarea.pressSequentially('happy song about summer', { delay: 60 }); } catch(e2) {}
     }
     await sleep(1);
 
