@@ -321,6 +321,22 @@ class SunoApi {
     const page = await browser.newPage();
     await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
+    // Clerk auth handshake (/create?__clerk_handshake=...) tugashini kutamiz.
+    // Tugamasa — sahifani qayta yuklab, toza autentifikatsiya holatini olamiz.
+    if (page.url().includes('__clerk_handshake')) {
+      logger.info('Clerk handshake detected, waiting for it to resolve...');
+      try {
+        await page.waitForURL((u: any) => !u.toString().includes('__clerk_handshake'), { timeout: 20000 });
+        logger.info('Handshake resolved: ' + page.url());
+      } catch (e) {
+        logger.info('Handshake did not auto-resolve, reloading /create...');
+      }
+      try {
+        await page.goto('https://suno.com/create', { waitUntil: 'domcontentloaded', timeout: 45000 });
+      } catch (e) {}
+      await page.waitForTimeout(3000);
+    }
+
     logger.info('Waiting for Suno interface to load');
     try {
       await Promise.race([
