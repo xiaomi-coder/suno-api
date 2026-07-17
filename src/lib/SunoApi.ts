@@ -361,7 +361,10 @@ class SunoApi {
 
     // Suno v5.5 UI: Song Description = textarea[maxlength="3000"] (Advanced),
     // "Describe the sound you want" = textarea[maxlength="500"] (Simple mode)
-    const textarea = page.locator('textarea[maxlength="3000"]')
+    const textarea = page.locator('textarea[maxlength="3000"]:visible')
+      .or(page.locator('textarea[maxlength="500"]:visible'))
+      .or(page.locator('textarea[maxlength="1000"]:visible'))
+      .or(page.locator('textarea[maxlength="3000"]'))
       .or(page.locator('textarea[maxlength="500"]'))
       .or(page.locator('[placeholder="Chat to make music"]'))
       .or(page.locator('[data-placeholder="Chat to make music"]'))
