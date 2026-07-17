@@ -423,29 +423,28 @@ class SunoApi {
       });
     });
 
-    // Textarea va submit
-    await this.click(textarea);
-    await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
+    // Textarea va submit — .fill() bilan to'ldiramiz (bu Create tugmasini YOQADI).
+    // pressSequentially/Enter ishlamaydi: dropdown ochadi va Create o'chiq qoladi.
+    try {
+      await textarea.fill('happy upbeat song about friendship and summer');
+      logger.info('>>> Textarea filled via .fill()');
+    } catch(e) {
+      try { await this.click(textarea); await textarea.pressSequentially('Lorem ipsum', { delay: 60 }); } catch(e2) {}
+    }
     await sleep(1);
 
-    // Yangi Suno UI — Enter bosish yoki button bosish
-    try {
-      await textarea.press('Enter');
-      logger.info('>>> Enter pressed on textarea');
-    } catch(e) {}
-
-    // Backup: Submit button ham bosamiz
+    // Create tugmasini bosamiz (endi yoqilgan). Yoqilishini kutamiz.
     try {
       const button = page.locator('button[aria-label="Create song"]')
         .or(page.locator('button[aria-label="Create"]'))
+        .or(page.getByRole('button', { name: 'Create', exact: true }))
         .or(page.locator('button[aria-label="Send"]'))
-        .or(page.locator('button[data-testid*="send"]'))
-        .or(page.locator('button[data-testid*="submit"]'))
         .first();
-      await button.click({ timeout: 3000 });
-      logger.info('>>> Submit button clicked');
+      await button.waitFor({ state: 'visible', timeout: 15000 });
+      await button.click({ timeout: 10000 });
+      logger.info('>>> Create song button clicked');
     } catch(e) {
-      logger.info('>>> No submit button found, Enter was used');
+      logger.info('>>> Create button click failed: ' + (e as any));
     }
     logger.info('>>> Waiting for generate request...');
 
