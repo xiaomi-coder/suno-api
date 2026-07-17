@@ -361,21 +361,17 @@ class SunoApi {
 
     // Suno v5.5 UI: Song Description = textarea[maxlength="3000"] (Advanced),
     // "Describe the sound you want" = textarea[maxlength="500"] (Simple mode)
-    const textarea = page.locator('textarea[maxlength="3000"]:visible')
-      .or(page.locator('textarea[maxlength="500"]:visible'))
-      .or(page.locator('textarea[maxlength="1000"]:visible'))
-      .or(page.locator('textarea[maxlength="3000"]'))
+    const textarea = page.locator('textarea[maxlength="3000"]')
       .or(page.locator('textarea[maxlength="500"]'))
+      .or(page.locator('textarea[maxlength="1000"]'))
       .or(page.locator('[placeholder="Chat to make music"]'))
-      .or(page.locator('[data-placeholder="Chat to make music"]'))
-      .or(page.locator('[contenteditable="true"]').filter({ hasText: '' }))
-      .or(page.getByPlaceholder('Chat to make music'))
-      .or(page.getByPlaceholder('Describe your song'))
       .or(page.getByPlaceholder('Describe the song you want to make'))
       .or(page.locator('.custom-textarea'))
       .first();
     try {
-      await textarea.waitFor({ timeout: 60000 });
+      await textarea.waitFor({ state: 'attached', timeout: 60000 });
+      await textarea.scrollIntoViewIfNeeded().catch(() => {});
+      await page.waitForTimeout(800);
     } catch (e) {
       // DEBUG: browser aynan nimani ko'ryapti — dalil uchun
       let dbg = '';
