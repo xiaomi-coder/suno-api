@@ -355,7 +355,22 @@ class SunoApi {
       .or(page.getByPlaceholder('Describe the song you want to make'))
       .or(page.locator('.custom-textarea'))
       .first();
-    await textarea.waitFor({ timeout: 60000 });
+    try {
+      await textarea.waitFor({ timeout: 60000 });
+    } catch (e) {
+      // DEBUG: browser aynan nimani ko'ryapti — dalil uchun
+      let dbg = '';
+      try {
+        const url = page.url();
+        const title = await page.title();
+        const bodyText = await page.evaluate(() => document.body ? document.body.innerText.slice(0, 300) : 'NO_BODY');
+        const taCount = await page.evaluate(() => document.querySelectorAll('textarea').length);
+        const loggedIn = /credit/i.test(bodyText);
+        dbg = `DEBUG_PAGE url=${url} | title=${title} | textareas=${taCount} | loggedIn=${loggedIn} | body="${bodyText.replace(/\n/g,' ')}"`;
+      } catch (e2) { dbg = 'DEBUG_FAILED: ' + e2; }
+      browser.browser()?.close();
+      throw new Error(dbg);
+    }
 
     // Route interceptor va debug — textarea click OLDIDAN ro'yxatga olinadi
     page.on('request', (req) => {
