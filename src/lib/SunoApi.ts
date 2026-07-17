@@ -262,11 +262,19 @@ class SunoApi {
       '--disable-blink-features=AutomationControlled',
       '--disable-web-security',
       '--no-sandbox',
+      '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--no-zygote',
       '--disable-features=site-per-process',
       '--disable-features=IsolateOrigins',
       '--disable-extensions',
-      '--disable-infobars'
+      '--disable-infobars',
+      '--disable-background-networking',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '--js-flags=--max-old-space-size=384'
     ];
     // Check for GPU acceleration, as it is recommended to turn it off for Docker
     if (yn(process.env.BROWSER_DISABLE_GPU, { default: false }))
