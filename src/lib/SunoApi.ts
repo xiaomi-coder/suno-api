@@ -319,7 +319,7 @@ class SunoApi {
     logger.info('CAPTCHA required. Launching browser...')
     const browser = await this.launchBrowser();
     const page = await browser.newPage();
-    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
+    await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
     try {
