@@ -383,7 +383,13 @@ class SunoApi {
         const url = page.url();
         const title = await page.title();
         const bodyText = await page.evaluate(() => document.body ? document.body.innerText.slice(0, 300) : 'NO_BODY');
-        const taCount = await page.evaluate(() => document.querySelectorAll('textarea').length);
+        const taCount = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('textarea')).map((t: any, i) => {
+            const st = window.getComputedStyle(t);
+            const vis = st.display !== 'none' && st.visibility !== 'hidden' && t.offsetParent !== null;
+            return `[${i}] max=${t.getAttribute('maxlength')} ph="${(t.placeholder||'').slice(0,25)}" vis=${vis} testid=${t.getAttribute('data-testid')}`;
+          }).join(' || ');
+        });
         const loggedIn = /credit/i.test(bodyText);
         dbg = `DEBUG_PAGE url=${url} | title=${title} | textareas=${taCount} | loggedIn=${loggedIn} | body="${bodyText.replace(/\n/g,' ')}"`;
       } catch (e2) { dbg = 'DEBUG_FAILED: ' + e2; }
