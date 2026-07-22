@@ -511,12 +511,19 @@ class SunoApi {
         });
       }
       if (sitekey) {
-        logger.info('>>> Turnstile sitekey: ' + sitekey + ' | action=' + (tsParams.action || '-'));
+        // To'liq parametrlarni loglaymiz — Suno action/cData ishlatsa, ularni uzatishimiz shart
+        let paramsDump = '';
+        try {
+          paramsDump = JSON.stringify(tsParams, (k, v) => (typeof v === 'function' ? '[fn]' : v));
+        } catch (e) { paramsDump = String(tsParams); }
+        logger.info('>>> Turnstile sitekey: ' + sitekey + ' | FULL PARAMS: ' + paramsDump.substring(0, 600));
+        const tsAction = tsParams.action || tsParams.a || undefined;
+        const tsCdata = tsParams.cData || tsParams.cdata || tsParams.cD || undefined;
         const tsRes: any = await this.solver.cloudflareTurnstile({
           pageurl: 'https://suno.com/create',
           sitekey: sitekey,
-          ...(tsParams.action ? { action: tsParams.action } : {}),
-          ...(tsParams.cData ? { data: tsParams.cData } : {}),
+          ...(tsAction ? { action: tsAction } : {}),
+          ...(tsCdata ? { data: tsCdata } : {}),
         });
         const tsToken = tsRes?.data;
         if (tsToken) {
