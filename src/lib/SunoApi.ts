@@ -316,6 +316,19 @@ class SunoApi {
     if (!await this.captchaRequired())
       return null;
 
+    // BYPASS urinishi: Turnstile xatosini report qilib captchani o'tkazishga harakat
+    try {
+      await this.getTurnstile();
+      logger.info('>>> Turnstile bypass urinildi, captcha qayta tekshirilmoqda...');
+      if (!await this.captchaRequired()) {
+        logger.info('>>> BYPASS ISHLADI — captcha talab qilinmayapti!');
+        return null;
+      }
+      logger.info('>>> Bypass ishlamadi, captcha hali kerak');
+    } catch (e: any) {
+      logger.info('>>> getTurnstile bypass xato: ' + (e?.message || e));
+    }
+
     logger.info('CAPTCHA required. Launching browser...')
     const browser = await this.launchBrowser();
     const page = await browser.newPage();
@@ -466,6 +479,16 @@ class SunoApi {
           // hCaptcha iframe borligini tekshirish
           const challengeVisible = await challenge.isVisible().catch(() => false);
           if (!challengeVisible) {
+            // DIAGNOSTIK: Suno aynan qanday captcha ko'rsatyapti — aniqlaymiz
+            try {
+              const diag = await page.evaluate(() => {
+                const ifr = [...document.querySelectorAll('iframe')].map((f: any) => ({ src: (f.src || '').slice(0, 130), title: f.title || '', id: f.id || '' }));
+                const ts = [...document.querySelectorAll('.cf-turnstile, [data-sitekey], [class*="turnstile" i], [id*="turnstile" i]')].map((e: any) => ({ tag: e.tagName, cls: (e.className || '').toString().slice(0, 80), sitekey: e.getAttribute('data-sitekey') || '' }));
+                const cap = [...document.querySelectorAll('[class*="captcha" i], [id*="captcha" i]')].map((e: any) => ({ tag: e.tagName, cls: (e.className || '').toString().slice(0, 80) }));
+                return { url: (location as any).href, turnstileGlobal: typeof (window as any).turnstile !== 'undefined', hcaptchaGlobal: typeof (window as any).hcaptcha !== 'undefined', iframes: ifr, turnstileEls: ts, captchaEls: cap };
+              });
+              logger.info('>>> CAPTCHA DIAGNOSTIC: ' + JSON.stringify(diag));
+            } catch (e: any) { logger.info('>>> Diagnostic xato: ' + (e?.message || e)); }
             // hCaptcha yo'q (Turnstile yoki boshqa) — route interceptor kutadi
             logger.info('No hCaptcha challenge detected, waiting for route interceptor...');
             await sleep(30); // 30 soniya route interceptorga vaqt beramiz
@@ -556,7 +579,7 @@ class SunoApi {
    */
   private async getTurnstile() {
     return this.client.post(
-      `https://clerk.suno.com/v1/client?__clerk_api_version=2021-02-05&_clerk_js_version=${SunoApi.CLERK_VERSION}&_method=PATCH`,
+      `${SunoApi.CLERK_BASE_URL}/v1/client?__clerk_api_version=2025-11-10&_clerk_js_version=${SunoApi.CLERK_VERSION}&_method=PATCH`,
       { captcha_error: '300030,300030,300030' },
       { headers: { 'content-type': 'application/x-www-form-urlencoded' } });
   }
