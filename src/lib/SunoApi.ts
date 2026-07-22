@@ -365,7 +365,33 @@ class SunoApi {
 
     if (this.ghostCursorEnabled)
       this.cursor = await createCursor(page);
-    
+
+    // TURNSTILE hook — Suno endi Cloudflare Turnstile ishlatadi (hCaptcha emas).
+    // turnstile.render/execute'ni o'rab, sitekey'ni ushlaymiz (JS orqali beriladi).
+    try {
+      await page.evaluate(() => {
+        const w = window as any;
+        w.__tsSitekey = null; w.__tsParams = null;
+        const wrap = () => {
+          if (w.turnstile && !w.turnstile.__hooked) {
+            for (const m of ['render', 'execute']) {
+              const orig = w.turnstile[m];
+              if (typeof orig === 'function') {
+                w.turnstile[m] = function (a: any, params: any) {
+                  try { const p = params || a; if (p && p.sitekey) { w.__tsSitekey = p.sitekey; w.__tsParams = p; } } catch (e) {}
+                  return orig.apply(this, arguments);
+                };
+              }
+            }
+            w.turnstile.__hooked = true;
+          }
+        };
+        wrap();
+        let n = 0; const iv = setInterval(() => { wrap(); if (++n > 80 || (w.turnstile && w.turnstile.__hooked)) clearInterval(iv); }, 150);
+      });
+      logger.info('>>> Turnstile render hook o\'rnatildi');
+    } catch (e: any) { logger.info('>>> Turnstile hook xato: ' + (e?.message || e)); }
+
     logger.info('Triggering the CAPTCHA');
     try {
       await page.getByLabel('Close').click({ timeout: 2000 }); // close all popups
@@ -465,6 +491,47 @@ class SunoApi {
       logger.info('>>> Create button click failed: ' + (e as any));
     }
     logger.info('>>> Waiting for generate request...');
+
+    // ===== TURNSTILE yechish (Suno endi Cloudflare Turnstile ishlatadi) =====
+    try {
+      let sitekey: string | null = null;
+      let tsParams: any = {};
+      for (let i = 0; i < 50; i++) {
+        const r: any = await page.evaluate(() => ({ sk: (window as any).__tsSitekey, p: (window as any).__tsParams }));
+        if (r && r.sk) { sitekey = r.sk; tsParams = r.p || {}; break; }
+        await sleep(0.4);
+      }
+      if (!sitekey) {
+        // Fallback: Turnstile iframe src yoki data-sitekey'dan
+        sitekey = await page.evaluate(() => {
+          const ifr = document.querySelector('iframe[src*="challenges.cloudflare.com"]') as any;
+          if (ifr && ifr.src) { const m = ifr.src.match(/0x[0-9A-Za-z_-]{10,}/); if (m) return m[0]; }
+          const el = document.querySelector('[data-sitekey]');
+          return el ? el.getAttribute('data-sitekey') : null;
+        });
+      }
+      if (sitekey) {
+        logger.info('>>> Turnstile sitekey: ' + sitekey + ' | action=' + (tsParams.action || '-'));
+        const tsRes: any = await this.solver.cloudflareTurnstile({
+          pageurl: 'https://suno.com/create',
+          sitekey: sitekey,
+          ...(tsParams.action ? { action: tsParams.action } : {}),
+          ...(tsParams.cData ? { data: tsParams.cData } : {}),
+        });
+        const tsToken = tsRes?.data;
+        if (tsToken) {
+          logger.info('>>> TURNSTILE YECHILDI (2captcha)! token: ' + String(tsToken).substring(0, 25));
+          try { browser.browser()?.close(); } catch (e) {}
+          return tsToken;
+        }
+        logger.info('>>> Turnstile 2captcha token bo\'sh qaytdi');
+      } else {
+        logger.info('>>> Turnstile sitekey topilmadi — eski oqimga o\'tamiz');
+      }
+    } catch (e: any) {
+      logger.info('>>> Turnstile yechish xato: ' + (e?.message || e));
+    }
+    // ===== Turnstile ishlamasa — eski hCaptcha oqimiga tushamiz =====
 
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {
