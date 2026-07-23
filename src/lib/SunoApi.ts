@@ -82,12 +82,30 @@ class SunoApi {
   private ghostCursorEnabled = yn(process.env.BROWSER_GHOST_CURSOR, { default: false });
   private cursor?: Cursor;
 
+  // Proxy (env orqali) — 2captcha VA bizning so'rov BIR XIL IP dan ketishi uchun.
+  // Turnstile tokeni IP ga bog'langan: yechuvchi IP != yuboruvchi IP bo'lsa Suno rad etadi.
+  private static PROXY_HOST = process.env.PROXY_HOST || '';
+  private static PROXY_PORT = process.env.PROXY_PORT || '';
+  private static PROXY_USER = process.env.PROXY_USER || '';
+  private static PROXY_PASS = process.env.PROXY_PASS || '';
+  private static proxyEnabled() { return !!(SunoApi.PROXY_HOST && SunoApi.PROXY_PORT); }
+
   constructor(cookies: string) {
     this.userAgent = new UserAgent(/Macintosh/).random().toString(); // Usually Mac systems get less amount of CAPTCHAs
     this.cookies = cookie.parse(cookies);
     this.deviceId = this.cookies.ajs_anonymous_id || randomUUID();
+    if (SunoApi.proxyEnabled())
+      logger.info('>>> Proxy yoqilgan: ' + SunoApi.PROXY_HOST + ':' + SunoApi.PROXY_PORT);
     this.client = axios.create({
       withCredentials: true,
+      ...(SunoApi.proxyEnabled() ? {
+        proxy: {
+          protocol: 'http',
+          host: SunoApi.PROXY_HOST,
+          port: Number(SunoApi.PROXY_PORT),
+          ...(SunoApi.PROXY_USER ? { auth: { username: SunoApi.PROXY_USER, password: SunoApi.PROXY_PASS } } : {}),
+        },
+      } : {}),
       headers: {
         'Affiliate-Id': 'undefined',
         'Device-Id': `"${this.deviceId}"`,
@@ -519,11 +537,18 @@ class SunoApi {
         logger.info('>>> Turnstile sitekey: ' + sitekey + ' | FULL PARAMS: ' + paramsDump.substring(0, 600));
         const tsAction = tsParams.action || tsParams.a || undefined;
         const tsCdata = tsParams.cData || tsParams.cdata || tsParams.cD || undefined;
+        // 2captcha AYNAN shu proxy (IP) orqali yechsin — token IP ga bog'langan
+        const useProxy = SunoApi.proxyEnabled();
+        logger.info('>>> 2captcha proxy: ' + (useProxy ? SunoApi.PROXY_HOST + ':' + SunoApi.PROXY_PORT : 'YO\'Q'));
         const tsRes: any = await this.solver.cloudflareTurnstile({
           pageurl: 'https://suno.com/create',
           sitekey: sitekey,
           ...(tsAction ? { action: tsAction } : {}),
           ...(tsCdata ? { data: tsCdata } : {}),
+          ...(useProxy ? {
+            proxy: `${SunoApi.PROXY_USER}:${SunoApi.PROXY_PASS}@${SunoApi.PROXY_HOST}:${SunoApi.PROXY_PORT}`,
+            proxytype: 'HTTP',
+          } : {}),
         });
         const tsToken = tsRes?.data;
         if (tsToken) {
