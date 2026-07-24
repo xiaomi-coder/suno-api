@@ -811,7 +811,6 @@ class SunoApi {
       continue_at: continue_at,
       continue_clip_id: continue_clip_id,
       task: task,
-      token: await this.getCaptcha()
     };
     if (isCustom) {
       payload.tags = tags;
@@ -821,32 +820,43 @@ class SunoApi {
     } else {
       payload.gpt_description_prompt = prompt;
     }
-    logger.info(
-      'generateSongs payload:\n' +
-        JSON.stringify(
-          {
-            prompt: prompt,
-            isCustom: isCustom,
-            tags: tags,
-            title: title,
-            make_instrumental: make_instrumental,
-            wait_audio: wait_audio,
-            negative_tags: negative_tags,
-            payload: payload
-          },
-          null,
-          2
-        )
-    );
-    const response = await this.client.post(
-      `${SunoApi.BASE_URL}/api/generate/v2/`,
-      payload,
-      {
-        timeout: 10000 // 10 seconds timeout
+
+    // AUTO-RETRY: Turnstile token gohida rad etiladi (token_validation_failed) —
+    // IP mos kelmasligi / muddat / bepul-proxy beqarorligi tufayli. Har urinishda
+    // YANGI token olib, 3 martagacha qayta yuboramiz. Foydalanuvchi xato ko'rmaydi.
+    let response: any = null;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      payload.token = await this.getCaptcha();
+      if (attempt === 1) {
+        logger.info('generateSongs payload:\n' + JSON.stringify(
+          { prompt, isCustom, tags, title, make_instrumental, wait_audio, negative_tags, payload }, null, 2));
       }
-    );
-    if (response.status !== 200) {
-      throw new Error('Error response:' + response.statusText);
+      try {
+        logger.info(`>>> Generate urinish ${attempt}/3...`);
+        response = await this.client.post(
+          `${SunoApi.BASE_URL}/api/generate/v2/`,
+          payload,
+          { timeout: 15000 }
+        );
+        if (response.status === 200) {
+          if (attempt > 1) logger.info(`>>> Generate ${attempt}-urinishda muvaffaqiyat!`);
+          break;
+        }
+        lastErr = new Error('Error response:' + response.statusText);
+      } catch (e: any) {
+        lastErr = e;
+        const status = e?.response?.status;
+        const errType = e?.response?.data?.error_type;
+        logger.info(`>>> Generate urinish ${attempt} xato: ${status} ${errType || (e?.message || '').substring(0, 60)}`);
+        const retryable = status === 422 || errType === 'token_validation_failed';
+        if (!retryable) throw e;           // boshqa xato — retry qilmaymiz
+        response = null;
+        if (attempt < 3) { await sleep(1, 2); continue; }
+      }
+    }
+    if (!response || response.status !== 200) {
+      throw lastErr || new Error('Generate failed after retries');
     }
     const songIds = response.data.clips.map((audio: any) => audio.id);
     //Want to wait for music file generation
