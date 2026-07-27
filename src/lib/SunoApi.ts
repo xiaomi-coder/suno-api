@@ -414,7 +414,15 @@ class SunoApi {
               const orig = w.turnstile[m];
               if (typeof orig === 'function') {
                 w.turnstile[m] = function (a: any, params: any) {
-                  try { const p = params || a; if (p && p.sitekey) { w.__tsSitekey = p.sitekey; w.__tsParams = p; } } catch (e) {}
+                  try {
+                    const p = params || a;
+                    if (p && p.sitekey) {
+                      w.__tsSitekey = p.sitekey; w.__tsParams = p;
+                      // Callback'ni ushlaymiz — 2captcha token'ini AYNAN shu callback'ga
+                      // beramiz -> Suno ilovasining O'ZI generate so'rovini yuboradi (CORS yo'q, sessiya bir xil).
+                      if (typeof p.callback === 'function') w.__tsCb = p.callback;
+                    }
+                  } catch (e) {}
                   return orig.apply(this, arguments);
                 };
               }
@@ -485,19 +493,40 @@ class SunoApi {
           return;
         }
         try {
-          logger.info('>>> Generate request intercepted!');
-          route.abort();
           const request = route.request();
           this.currentToken = request.headers().authorization?.split('Bearer ').pop() || this.currentToken;
-          // In-session submit uchun: browser'ning aynan qaysi URL va payload bilan
-          // yuborayotganini ushlaymiz (v2-web, to'g'ri format).
           this._capUrl = url;
-          try { this._capPayload = request.postDataJSON(); } catch (e) { this._capPayload = null; }
-          const token = request.postDataJSON()?.token || null;
-          logger.info('>>> Token extracted: ' + (token ? token.substring(0, 30) : 'null') + ' | capUrl: ' + url.substring(0, 80));
-          resolveToken(token);
+          let body: any = null;
+          try { body = request.postDataJSON(); } catch (e) { body = null; }
+          this._capPayload = body;
+          const token = body?.token || null;
+          if (token) {
+            // TOKEN BOR — bu ilovaning O'ZI yuborgan haqiqiy so'rov (callback'dan keyin).
+            // O'tkazamiz va javobini ushlaymiz -> in-session, 422 yo'q.
+            logger.info('>>> IN-SESSION generate (token bor) — continue + capture');
+            try {
+              const resp = await route.fetch();
+              const status = resp.status();
+              let json: any = null;
+              try { json = await resp.json(); } catch (e) { json = null; }
+              logger.info('>>> IN-SESSION generate javobi: HTTP ' + status);
+              if (status === 200 && json && json.clips) {
+                this.inBrowserClips = json.clips;
+                logger.info('>>> IN-SESSION MUVAFFAQIYAT! clips: ' + json.clips.length);
+              }
+              await route.fulfill({ response: resp });
+            } catch (e: any) {
+              logger.info('>>> in-session fetch xato: ' + (e?.message || e));
+              try { await route.abort(); } catch (e2) {}
+            }
+            resolveToken(token);
+          } else {
+            // TOKENSIZ (premature) — abort, token kelishini kutamiz.
+            logger.info('>>> Generate so\'rovi (tokensiz) — abort, callback kutamiz');
+            try { await route.abort(); } catch (e) {}
+          }
         } catch(err) {
-          resolveToken(null);
+          try { await route.abort(); } catch (e) {}
         }
       });
     });
@@ -577,34 +606,29 @@ class SunoApi {
         const tsToken = tsRes?.data;
         if (tsToken) {
           logger.info('>>> TURNSTILE YECHILDI (2captcha)! token: ' + String(tsToken).substring(0, 25));
-          // ===== IN-SESSION SUBMIT: token'ni browser'ning O'Z sessiyasida yuboramiz =====
-          // Sabab: axios boshqa sessiyadan yuboradi -> cf_clearance mos kelmaydi -> 422.
-          // Browser ichidagi fetch cookie'larni (cf_clearance) avtomatik oladi -> mos keladi.
+          // ===== IN-SESSION: token'ni ilovaning Turnstile callback'iga beramiz =====
+          // Ilovaning O'ZI generate so'rovini yuboradi (to'g'ri header, CORS yo'q, sessiya bir xil).
+          // Route interceptor o'sha so'rovni ushlab, javobini this.inBrowserClips ga yozadi.
           try {
-            const genUrl = this._capUrl || 'https://studio-api.prod.suno.com/api/generate/v2-web/';
-            const genPayload = this._capPayload ? { ...this._capPayload } : {};
-            genPayload.token = tsToken;
-            const authTok = this.currentToken || '';
-            const result: any = await page.evaluate(async (arg: any) => {
+            const fed = await page.evaluate((tok: string) => {
+              const w = window as any;
+              if (typeof w.__tsCb === 'function') { try { w.__tsCb(tok); return 'callback'; } catch (e) { return 'callback-xato:' + e; } }
+              return 'callback-yo\'q';
+            }, tsToken);
+            logger.info('>>> Token callback ga berildi: ' + fed);
+            // Ba'zan ilova qayta "Create" bosishni kutadi — token bergach yana bosamiz.
+            if (fed !== 'callback') {
               try {
-                const r = await fetch(arg.url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + arg.auth },
-                  body: JSON.stringify(arg.payload),
-                  credentials: 'include'
-                });
-                const txt = await r.text();
-                return { status: r.status, body: txt };
-              } catch (e: any) { return { status: -1, body: String(e) }; }
-            }, { url: genUrl, payload: genPayload, auth: authTok });
-            logger.info('>>> IN-BROWSER submit: HTTP ' + result.status + ' | ' + String(result.body).substring(0, 400));
-            if (result.status === 200) {
-              try {
-                const parsed = JSON.parse(result.body);
-                if (parsed && parsed.clips) { this.inBrowserClips = parsed.clips; logger.info('>>> IN-BROWSER MUVAFFAQIYAT! clips: ' + parsed.clips.length); }
-              } catch (e) { logger.info('>>> in-browser javob parse xato (lekin 200): ' + e); }
+                const btn = page.locator('button[aria-label="Create song"]').or(page.locator('button[aria-label="Create"]')).first();
+                await btn.click({ timeout: 5000 });
+                logger.info('>>> Create qayta bosildi (callback yo\'q edi)');
+              } catch (e) {}
             }
-          } catch (e: any) { logger.info('>>> IN-BROWSER submit xato: ' + (e?.message || e)); }
+            // Ilova so'rov yuborib, route uni ushlashini kutamiz (max ~25s)
+            for (let k = 0; k < 50 && !this.inBrowserClips; k++) await sleep(0.5);
+            if (this.inBrowserClips) logger.info('>>> IN-SESSION ISHLADI! clips: ' + this.inBrowserClips.length);
+            else logger.info('>>> callback berildi, lekin in-session natija kelmadi');
+          } catch (e: any) { logger.info('>>> in-session callback xato: ' + (e?.message || e)); }
           try { browser.browser()?.close(); } catch (e) {}
           return tsToken;
         }
