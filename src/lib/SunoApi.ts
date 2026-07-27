@@ -548,9 +548,11 @@ class SunoApi {
         logger.info('>>> Turnstile sitekey: ' + sitekey + ' | FULL PARAMS: ' + paramsDump.substring(0, 600));
         const tsAction = tsParams.action || tsParams.a || undefined;
         const tsCdata = tsParams.cData || tsParams.cdata || tsParams.cD || undefined;
-        // 2captcha AYNAN shu proxy (IP) orqali yechsin — token IP ga bog'langan
-        const useProxy = SunoApi.proxyEnabled();
-        logger.info('>>> 2captcha proxy: ' + (useProxy ? SunoApi.PROXY_HOST + ':' + SunoApi.PROXY_PORT : 'YO\'Q'));
+        // 2captcha proxy: default YO'Q — 2captcha o'z toza IP'lari bilan yechadi (ishonchliroq).
+        // Suno Turnstile tokeni IP ga bog'lanmaydi (test bilan tasdiqlanmoqda). Kerak bo'lsa
+        // TWOCAPTCHA_PROXY=true qilib qayta yoqiladi (token IP-bound bo'lib chiqsa).
+        const useProxy = SunoApi.proxyEnabled() && yn(process.env.TWOCAPTCHA_PROXY, { default: false });
+        logger.info('>>> 2captcha proxy: ' + (useProxy ? SunoApi.PROXY_HOST + ':' + SunoApi.PROXY_PORT : 'YO\'Q (2captcha o\'z IP)'));
         const tsRes: any = await this.solver.cloudflareTurnstile({
           pageurl: 'https://suno.com/create',
           sitekey: sitekey,
