@@ -77,6 +77,11 @@ class SunoApi {
   private currentToken?: string;
   private deviceId?: string;
   private userAgent?: string;
+  // In-session submit uchun: browser'ning generate so'rovidan ushlangan payload/URL
+  private _capUrl?: string;
+  private _capPayload?: any;
+  // Browser ichida (o'z sessiyasida) yaratilgan natija — generateSongs shundan foydalanadi
+  public inBrowserClips?: any;
   private cookies: Record<string, string | undefined>;
   private solver = new Solver(process.env.TWOCAPTCHA_KEY + '');
   private ghostCursorEnabled = yn(process.env.BROWSER_GHOST_CURSOR, { default: false });
@@ -484,8 +489,12 @@ class SunoApi {
           route.abort();
           const request = route.request();
           this.currentToken = request.headers().authorization?.split('Bearer ').pop() || this.currentToken;
+          // In-session submit uchun: browser'ning aynan qaysi URL va payload bilan
+          // yuborayotganini ushlaymiz (v2-web, to'g'ri format).
+          this._capUrl = url;
+          try { this._capPayload = request.postDataJSON(); } catch (e) { this._capPayload = null; }
           const token = request.postDataJSON()?.token || null;
-          logger.info('>>> Token extracted: ' + (token ? token.substring(0, 30) : 'null'));
+          logger.info('>>> Token extracted: ' + (token ? token.substring(0, 30) : 'null') + ' | capUrl: ' + url.substring(0, 80));
           resolveToken(token);
         } catch(err) {
           resolveToken(null);
@@ -568,6 +577,34 @@ class SunoApi {
         const tsToken = tsRes?.data;
         if (tsToken) {
           logger.info('>>> TURNSTILE YECHILDI (2captcha)! token: ' + String(tsToken).substring(0, 25));
+          // ===== IN-SESSION SUBMIT: token'ni browser'ning O'Z sessiyasida yuboramiz =====
+          // Sabab: axios boshqa sessiyadan yuboradi -> cf_clearance mos kelmaydi -> 422.
+          // Browser ichidagi fetch cookie'larni (cf_clearance) avtomatik oladi -> mos keladi.
+          try {
+            const genUrl = this._capUrl || 'https://studio-api.prod.suno.com/api/generate/v2-web/';
+            const genPayload = this._capPayload ? { ...this._capPayload } : {};
+            genPayload.token = tsToken;
+            const authTok = this.currentToken || '';
+            const result: any = await page.evaluate(async (arg: any) => {
+              try {
+                const r = await fetch(arg.url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + arg.auth },
+                  body: JSON.stringify(arg.payload),
+                  credentials: 'include'
+                });
+                const txt = await r.text();
+                return { status: r.status, body: txt };
+              } catch (e: any) { return { status: -1, body: String(e) }; }
+            }, { url: genUrl, payload: genPayload, auth: authTok });
+            logger.info('>>> IN-BROWSER submit: HTTP ' + result.status + ' | ' + String(result.body).substring(0, 400));
+            if (result.status === 200) {
+              try {
+                const parsed = JSON.parse(result.body);
+                if (parsed && parsed.clips) { this.inBrowserClips = parsed.clips; logger.info('>>> IN-BROWSER MUVAFFAQIYAT! clips: ' + parsed.clips.length); }
+              } catch (e) { logger.info('>>> in-browser javob parse xato (lekin 200): ' + e); }
+            }
+          } catch (e: any) { logger.info('>>> IN-BROWSER submit xato: ' + (e?.message || e)); }
           try { browser.browser()?.close(); } catch (e) {}
           return tsToken;
         }
@@ -842,7 +879,15 @@ class SunoApi {
     let response: any = null;
     let lastErr: any = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
+      this.inBrowserClips = undefined;
       payload.token = await this.getCaptcha();
+      // IN-SESSION: agar browser o'z sessiyasida qo'shiqni yaratib bo'lgan bo'lsa,
+      // axios'ga borish shart emas (422 xavfi yo'q) — natijani to'g'ridan olamiz.
+      if (this.inBrowserClips) {
+        logger.info('>>> In-browser natijadan foydalanamiz (axios o\'tkazib yuborildi)');
+        response = { status: 200, data: { clips: this.inBrowserClips } };
+        break;
+      }
       if (attempt === 1) {
         logger.info('generateSongs payload:\n' + JSON.stringify(
           { prompt, isCustom, tags, title, make_instrumental, wait_audio, negative_tags, payload }, null, 2));
