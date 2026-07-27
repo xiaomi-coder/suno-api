@@ -299,9 +299,20 @@ class SunoApi {
       args.push('--enable-unsafe-swiftshader',
         '--disable-gpu',
         '--disable-setuid-sandbox');
+    // MUHIM: browser'ni ham AYNAN shu proxy orqali o'tkazamiz.
+    // Aks holda sahifa Railway datacenter IP bilan yuklanadi, 2captcha esa
+    // proxy IP bilan yechadi -> IP mos kelmaydi -> Turnstile token 422 beradi.
+    if (SunoApi.proxyEnabled())
+      logger.info('>>> Browser proxy yoqilgan: ' + SunoApi.PROXY_HOST + ':' + SunoApi.PROXY_PORT);
     const browser = await this.getBrowserType().launch({
       args,
-      headless: yn(process.env.BROWSER_HEADLESS, { default: true })
+      headless: yn(process.env.BROWSER_HEADLESS, { default: true }),
+      ...(SunoApi.proxyEnabled() ? {
+        proxy: {
+          server: `http://${SunoApi.PROXY_HOST}:${SunoApi.PROXY_PORT}`,
+          ...(SunoApi.PROXY_USER ? { username: SunoApi.PROXY_USER, password: SunoApi.PROXY_PASS } : {})
+        }
+      } : {})
     });
     const context = await browser.newContext({ userAgent: this.userAgent, locale: process.env.BROWSER_LOCALE, viewport: null });
     const cookies = [];
