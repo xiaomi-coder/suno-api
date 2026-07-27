@@ -512,7 +512,21 @@ class SunoApi {
               let sendBody: any = body;
               if (this.pendingPayload) {
                 sendBody = { ...body, ...this.pendingPayload, token: body.token };
-                logger.info('>>> Haqiqiy payload qo\'shildi (mv: ' + sendBody.mv + ', title: ' + (sendBody.title || '-') + ')');
+                // MUHIM: browser oynasiga Create tugmasini yoqish uchun DUMMY inglizcha
+                // matn yozamiz. U payloadda qolsa, Suno uni ASOSIY deb oladi va
+                // bizning matnimizni e'tiborsiz qoldiradi -> inglizcha qo'shiq chiqadi.
+                if (this.pendingPayload.prompt) {
+                  // custom rejim (o'z matnimiz) — description bo'lmasligi SHART
+                  delete sendBody.gpt_description_prompt;
+                  sendBody.generation_type = this.pendingPayload.generation_type || 'TEXT';
+                } else if (this.pendingPayload.gpt_description_prompt) {
+                  // description rejim — matn bo'sh bo'lishi kerak
+                  sendBody.prompt = '';
+                }
+                logger.info('>>> Haqiqiy payload (mv: ' + sendBody.mv
+                  + ', title: ' + (sendBody.title || '-')
+                  + ', desc: ' + (sendBody.gpt_description_prompt ? 'BOR' : 'yo\'q')
+                  + ', matn: ' + (sendBody.prompt ? sendBody.prompt.length + ' belgi' : 'yo\'q') + ')');
               }
               const resp = await route.fetch({ postData: JSON.stringify(sendBody) });
               const status = resp.status();
