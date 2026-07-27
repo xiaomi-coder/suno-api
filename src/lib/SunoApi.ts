@@ -82,6 +82,8 @@ class SunoApi {
   private _capPayload?: any;
   // Browser ichida (o'z sessiyasida) yaratilgan natija — generateSongs shundan foydalanadi
   public inBrowserClips?: any;
+  // generateSongs'ning haqiqiy payload'i — in-session so'rovga qo'shiladi
+  private pendingPayload?: any;
   private cookies: Record<string, string | undefined>;
   private solver = new Solver(process.env.TWOCAPTCHA_KEY + '');
   private ghostCursorEnabled = yn(process.env.BROWSER_GHOST_CURSOR, { default: false });
@@ -505,7 +507,14 @@ class SunoApi {
             // O'tkazamiz va javobini ushlaymiz -> in-session, 422 yo'q.
             logger.info('>>> IN-SESSION generate (token bor) — continue + capture');
             try {
-              const resp = await route.fetch();
+              // Ilova o'z (dummy) payload'ini yuboradi. Bizning haqiqiy so'rovimizni
+              // (o'zbekcha matn, teglar, sarlavha, model) token bilan birlashtirib yuboramiz.
+              let sendBody: any = body;
+              if (this.pendingPayload) {
+                sendBody = { ...body, ...this.pendingPayload, token: body.token };
+                logger.info('>>> Haqiqiy payload qo\'shildi (mv: ' + sendBody.mv + ', title: ' + (sendBody.title || '-') + ')');
+              }
+              const resp = await route.fetch({ postData: JSON.stringify(sendBody) });
               const status = resp.status();
               let json: any = null;
               try { json = await resp.json(); } catch (e) { json = null; }
@@ -904,6 +913,9 @@ class SunoApi {
     let lastErr: any = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       this.inBrowserClips = undefined;
+      // In-session so'rovga qo'shish uchun haqiqiy payload (token'siz — u browser'dan keladi)
+      this.pendingPayload = { ...payload };
+      delete this.pendingPayload.token;
       payload.token = await this.getCaptcha();
       // IN-SESSION: agar browser o'z sessiyasida qo'shiqni yaratib bo'lgan bo'lsa,
       // axios'ga borish shart emas (422 xavfi yo'q) — natijani to'g'ridan olamiz.
